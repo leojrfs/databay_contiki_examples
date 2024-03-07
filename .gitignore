@@ -1,3 +1,7 @@
+# databay
+databay_user_conf.h
+
+# general
 *.a
 *.bin
 *.hex

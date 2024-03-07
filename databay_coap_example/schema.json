@@ -1,0 +1,46 @@
+{
+    "id": "W70lr6F1",
+    "version": 1000,
+    "name": "nrf52840_dongle_example",
+    "description": "",
+    "is_draft": false,
+    "created_time": "2024-02-28T12:43:44-00:00",
+    "attributes": {
+        "0": {
+            "unit": "degree_celsius",
+            "quantity": "thermodynamic_temperature",
+            "name": "Temperature Sensor",
+            "format": "Float",
+            "access": "ro"
+        },
+        "1": {
+            "name": "Button",
+            "format": "Bool",
+            "access": "ro"
+        },
+        "2": {
+            "name": "LED red",
+            "format": "Bool",
+            "access": "rw"
+        },
+        "3": {
+            "name": "LED green",
+            "format": "Bool",
+            "access": "rw"
+        },
+        "4": {
+            "unit": "second",
+            "quantity": "time",
+            "name": "Uptime",
+            "format": "Int",
+            "access": "ro"
+        },
+        "5": {
+            "unit": "second",
+            "quantity": "time",
+            "name": "Publish interval",
+            "format": "Int",
+            "access": "rw"
+        }
+    }
+}

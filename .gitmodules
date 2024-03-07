@@ -1,3 +1,6 @@
 [submodule "contiki-ng"]
 	path = contiki-ng
 	url = https://github.com/contiki-ng/contiki-ng.git
+[submodule "databay_coap_example/cmp"]
+	path = databay_coap_example/cmp
+	url = https://github.com/camgunz/cmp.git
