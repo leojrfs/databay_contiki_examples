@@ -47,6 +47,11 @@ static uint16_t be16(uint16_t x)
     return x;
 }
 
+static int16_t sbe16(int16_t x)
+{
+    return (int16_t)be16((uint16_t)x);
+}
+
 static uint32_t be32(uint32_t x)
 {
     char *b = (char *)&x;
@@ -77,6 +82,8 @@ static int32_t sbe32(int32_t x)
 #define MSGPACK_UINT16_MARKER 0xcd
 #define MSGPACK_UINT32_MARKER 0xce
 #define MSGPACK_UINT64_MARKER 0xcf
+#define MSGPACK_INT8_MARKER 0xd0
+#define MSGPACK_INT16_MARKER 0xd1
 #define MSGPACK_INT32_MARKER 0xd2
 #define MSGPACK_NIL 0xc0
 
@@ -112,6 +119,15 @@ static void msgpack_write_uint16(uint8_t *data, uint8_t *seek, uint16_t val)
 
 static void msgpack_write_uint32(uint8_t *data, uint8_t *seek, uint32_t val)
 {
+    if (val <= 0xFF)
+    {
+        return msgpack_write_uint8(data, seek, (uint8_t)val);
+    }
+    if (val <= 0xFFFF)
+    {
+        return msgpack_write_uint16(data, seek, (uint16_t)val);
+    }
+
     // set marker
     data[*seek] = MSGPACK_UINT32_MARKER;
     *seek = *seek + sizeof(uint8_t);
@@ -121,8 +137,42 @@ static void msgpack_write_uint32(uint8_t *data, uint8_t *seek, uint32_t val)
     *seek = *seek + sizeof(uint32_t);
 }
 
+static void msgpack_write_int8(uint8_t *data, uint8_t *seek, int8_t val)
+{
+    // set marker
+    data[*seek] = MSGPACK_INT8_MARKER;
+    *seek = *seek + sizeof(uint8_t);
+    // set data
+    data[*seek] = val;
+    *seek = *seek + sizeof(int8_t);
+}
+
+static void msgpack_write_int16(uint8_t *data, uint8_t *seek, int16_t val)
+{
+    // set marker
+    data[*seek] = MSGPACK_INT16_MARKER;
+    *seek = *seek + sizeof(uint8_t);
+    // set data
+    val = sbe16(val);
+    memcpy(&data[*seek], &val, sizeof(int16_t));
+    *seek = *seek + sizeof(int16_t);
+}
+
 static void msgpack_write_int32(uint8_t *data, uint8_t *seek, int32_t val)
 {
+    if (val >= 0)
+    {
+        return msgpack_write_uint32(data, seek, val);
+    }
+    if (val >= -128)
+    {
+        return msgpack_write_int8(data, seek, (int8_t)val);
+    }
+    if (val >= -32768)
+    {
+        return msgpack_write_int16(data, seek, (int16_t)val);
+    }
+    // write int16 instead if <
     // set marker
     data[*seek] = MSGPACK_INT32_MARKER;
     *seek = *seek + sizeof(uint8_t);
