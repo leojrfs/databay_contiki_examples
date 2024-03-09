@@ -9,20 +9,20 @@ import socketserver
 import socket
 import threading
 import argparse
-import asyncio
-import aiocoap
 import umsgpack
+from urllib import request
+from urllib.error import HTTPError
 
-DATABAY_COAP_SERVER_HOST = "app.databay.dev"
-DATABAY_COAP_SERVER_PORT = "5683"
+
 DATABAY_PROJECT_ID = os.getenv("DATABAY_PROJECT_ID") or sys.exit(
     "Error: environment variable 'DATABAY_PROJECT_ID' must be set."
 )
 DATABAY_API_KEY = os.getenv("DATABAY_API_KEY") or sys.exit(
     "Error: environment variable 'DATABAY_API_KEY' must be set."
 )
-DATABAY_SERVER_URI = f"coap://{DATABAY_COAP_SERVER_HOST}:{DATABAY_COAP_SERVER_PORT}"
-DATABAY_BASE_URI = f"{DATABAY_SERVER_URI}/v1/{DATABAY_PROJECT_ID}"
+DATABAY_SERVER_BASE_URI = (
+    f"https://app.databay.dev/api/v1/projects/{DATABAY_PROJECT_ID}/incoming"
+)
 
 parser = argparse.ArgumentParser(
     prog="databay_udp_proxy",
@@ -77,38 +77,39 @@ def print_verbose(*args, **kwargs):
 
 
 def databay_publish_blocking(req_id, device_id, payload):
-    async def inner():
-        nonlocal device_id, payload
-        uri = f"{DATABAY_BASE_URI}/{device_id}?{DATABAY_API_KEY}"
-        context = await aiocoap.Context.create_client_context()
-
-        request = aiocoap.Message(
-            code=aiocoap.Code.POST,
-            uri=uri,
-            payload=payload,
-        )
-        response = await context.request(request).response
-
-        if response.code == aiocoap.Code.CONTENT:
-            # Return the response payload
-            return response.payload
+    req = request.Request(
+        f"{DATABAY_SERVER_BASE_URI}/{device_id}",
+        data=payload,
+        method="POST",
+    )
+    req.add_header("Authorization", f"Bearer {DATABAY_API_KEY}")
+    req.add_header("Content-Type", "application/msgpack")
+    try:
+        res = request.urlopen(req)
+        http_status = res.status
+        if http_status == 200:
+            res_payload = res.read()
+            return res_payload
         else:
-            coap_code_str = response.code.name_printable
             print(
-                f"[{req_id}] ERROR: Failed publishing data to databay! CoAP code='{coap_code_str}'",
-                end="",
+                f"[{req_id}] Error: return code not expected while publishing data to databay. HTTP return code: {http_status}",
                 file=sys.stderr,
+                flush=True,
             )
-            response_payload_hex = "".join(f"{x:02x}" for x in response.payload)
-            print_verbose(
-                f" payload='{response_payload_hex}'",
-                end="",
-                file=sys.stderr,
-            )
-            print("", file=sys.stderr, flush=True)
             return None
-
-    return asyncio.run(inner())
+    except HTTPError as http_error_str:
+        print(
+            f"[{req_id}] Error: while publishing data to databay. {http_error_str}",
+            file=sys.stderr,
+            flush=True,
+        )
+    except Exception as error:
+        print(
+            f"[{req_id}] Error: while publishing data to databay: {type(error).__name__}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return None
 
 
 def hijack_float_values(data):
@@ -148,12 +149,13 @@ class DatabayProxyUDPHandler(socketserver.BaseRequestHandler):
         udp_data = self.request[0].strip()
         target_socket = self.request[1]
         current_thread = threading.current_thread()
-        device_id = ipv6_str_to_databay_device_id(self.client_address[0])
+        device_ipv6_addr_str = self.client_address[0]
+        device_id = ipv6_str_to_databay_device_id(device_ipv6_addr_str)
         # extract thread nr by using `current_thread.name` string
         req_id = current_thread.name.split("-")[1].split(" ")[0]
         udp_data_hex = "".join(f"{x:02x}" for x in udp_data)
         print_verbose(
-            f"[{req_id}] Received from '{self.client_address[0]}' with payload: '{udp_data_hex}'"
+            f"[{req_id}] Received UDP packet from {device_ipv6_addr_str} with payload: '{udp_data_hex}'"
         )
         # HACK: hijack data
         hijacked_data = hijack_float_values(udp_data)
@@ -163,7 +165,7 @@ class DatabayProxyUDPHandler(socketserver.BaseRequestHandler):
         if res_data:
             res_data_hex = "".join(f"{x:02x}" for x in res_data)
             print_verbose(
-                f"[{req_id}] Sending to '{self.client_address[0]}' with payload: '{res_data_hex}'"
+                f"[{req_id}] Sending UDP packet to {device_ipv6_addr_str} with payload: '{res_data_hex}'"
             )
             target_socket.sendto(res_data, self.client_address)
             print_info(f"[{req_id}] Sent reply from databay to '{device_id}'.")
